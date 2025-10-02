@@ -1,11 +1,20 @@
-This repo is a template for a **C++ MQTT node** in the robot stack.
+## 🎯 Project Context
 
-## 🧠 What this node is expected to do
+This is a **standalone C++ MQTT node** for a robot stack. It's designed to:
 
-- Build an executable (target name = **repo name**, e.g. `my-cpp-node`)
-- Log to stdout/stderr
-- Exit non-zero on fatal errors
-- (Optional) Link MQTT client lib (Paho, etc.)
+- Run as an independent process (systemd service or Docker container)
+- Communicate via MQTT broker (`MQTT_URL` environment variable)
+- Build for multiple platforms: Pi 4/5, Jetson, x86_64, Docker
+- Be deployed and managed by the parent stack's `manifest.yaml`
+
+**Key principle**: This repo is self-contained. The stack repo orchestrates deployment, but all build logic lives here.
+
+## 🧠 What this node does
+
+- Builds an executable (target name = **repo name**, e.g. `my-cpp-node`)
+- Logs to stdout/stderr (captured by systemd/Docker)
+- Exits non-zero on fatal errors
+- Communicates via MQTT (optional: link Paho client lib)
 
 ## 📦 Layout
 
@@ -154,9 +163,84 @@ Add more (e.g., `-Werror`) during CI to keep quality high.
 
 ## 🔎 Common errors
 
-* **Container won’t start** → usually wrong arch binary or missing runtime libs.
+* **Container won't start** → usually wrong arch binary or missing runtime libs.
 
   * Check: `file /usr/local/bin/<your-binary>` (should be `x86_64` on desktop)
   * Ensure Dockerfile installs `libstdc++6 libgcc-s1`
 * **Exec path wrong** → `ENTRYPOINT` must match the copied binary path.
 * **No binary built** → confirm `add_executable(<your-name> src/main.cpp)` exists and target name matches repo name.
+
+---
+
+## 🤖 Development Workflow (Claude Code)
+
+### Common Tasks
+
+**Building for local testing:**
+```bash
+make build-amd64        # Desktop dev build
+./build/<repo-name>     # Run directly
+```
+
+**Testing with Docker Compose:**
+1. Return to the parent stack repo
+2. Regenerate compose: `python3 tools/stack.py gen-compose --profile dev-amd64`
+3. Run: `docker compose up --build`
+4. Check logs: `docker compose logs -f <service-name>`
+
+**Adding new source files:**
+1. Create files under `src/`
+2. Update `CMakeLists.txt` to add new source files to `add_executable()`
+3. Rebuild: `make build-amd64`
+
+**Adding dependencies (e.g., MQTT library):**
+1. Update `Dockerfile.docker` builder stage to install dev packages
+2. Update `CMakeLists.txt` with `find_package()` and `target_link_libraries()`
+3. Update `Makefile` build commands if cross-compilation needs special flags
+4. Test locally, then test in Docker
+
+**Debugging compilation issues:**
+```bash
+# Clean rebuild
+rm -rf build
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build -j --verbose
+```
+
+### File Reference
+
+| File | Purpose |
+|------|---------|
+| `src/main.cpp` | Main entry point - start here for logic changes |
+| `CMakeLists.txt` | Build configuration - update when adding files/libs |
+| `Makefile` | Build targets for different platforms - rarely modified |
+| `Dockerfile.docker` | Container build recipe - update for dependencies |
+
+### Integration with Stack
+
+This node is referenced in the parent stack's `manifest.yaml`:
+
+```yaml
+- name: <repo-name>
+  repo: https://github.com/YOU/<repo-name>.git
+  ref: main
+  workdir: .
+  exec: build/<repo-name>
+  build:
+    pi5:    ["make","build-pi5"]
+    amd64:  ["make","build-amd64"]
+    docker: ["make","build-docker"]
+```
+
+After making changes:
+1. Commit and push this repo
+2. In the stack repo, run `sudo python3 tools/stack.py update --profile <profile>` to pull and rebuild
+
+### Best Practices
+
+- **Keep binary name matching repo name** - the scaffolder ensures this, maintain it
+- **Log to stdout/stderr only** - systemd and Docker capture these
+- **Exit cleanly** - return non-zero on unrecoverable errors (triggers systemd restart)
+- **Read `MQTT_URL` from environment** - don't hardcode broker addresses
+- **Test locally before Docker** - faster iteration with native builds
+- **Use sanitizers during development** - catches memory issues early
