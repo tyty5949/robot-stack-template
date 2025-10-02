@@ -9,3 +9,6 @@ rg -l 'robot-stack-template' \
   | xargs sed -i "s/robot-stack-template/${NEW_NAME}/g"
 
 echo "✅ Renamed references from 'robot-stack-template' to '${NEW_NAME}'."
+echo "Next steps:"
+echo "  git add . && git commit -m 'Initialized ${NEW_NAME}'"
+echo "  git push -u origin main"
