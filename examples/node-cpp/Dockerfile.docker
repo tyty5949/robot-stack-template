@@ -1,6 +1,25 @@
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y g++ cmake make && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
+# syntax=docker/dockerfile:1.7
+ARG DEBIAN_RELEASE=bookworm
+
+# ---------- Builder ----------
+FROM --platform=$BUILDPLATFORM debian:${DEBIAN_RELEASE}-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    g++ cmake make ninja-build ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
 COPY . .
-RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
-CMD ["./build/example_cpp"]
+# If you want to switch flags based on target arch:
+ARG TARGETARCH
+# Example: you can pass -DARM64=ON for arm64 builds here if needed.
+RUN cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+ && cmake --build build -j
+
+# ---------- Runtime ----------
+FROM debian:${DEBIAN_RELEASE}-slim
+# C++ runtime libs (needed by binaries built with GCC)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 libgcc-s1 && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+# Copy the built binary from the builder stage
+COPY --from=build /src/build/node-cpp /usr/local/bin/node-cpp
+# Good defaults: no shell wrapping; just run the binary
+ENTRYPOINT ["node-cpp"]
