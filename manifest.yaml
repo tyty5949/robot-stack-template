@@ -1,0 +1,53 @@
+
+stack_root: /opt/robot
+ipc:
+  adapter: mqtt
+  broker:
+    type: mosquitto
+    conf: broker/mosquitto.conf
+
+defaults:
+  user: robot
+  unit:
+    after: [network-online.target]
+    restart: on-failure
+  env:
+    MQTT_URL: tcp://127.0.0.1:1883
+
+nodes:
+  - name: motor
+    repo: https://github.com/YOURNAME/motor-node.git
+    ref: main
+    workdir: .
+    exec: build/motor
+    build:
+      pi:     ["make","build-pi"]
+      amd64:  ["make","build-amd64"]
+      docker: ["make","build-docker"]
+
+  - name: planner
+    repo: https://github.com/YOURNAME/planner-node.git
+    ref: main
+    workdir: .
+    exec: venv/bin/python apps/planner.py
+    build:
+      pi:     ["make","build-pi"]
+      amd64:  ["make","build-amd64"]
+      docker: ["make","build-docker"]
+
+profiles:
+  pi4:
+    nodes:
+      - name: motor
+        build: { use: pi }
+      - name: planner
+        build: { use: pi }
+
+  dev-amd64:
+    ipc:
+      broker: { type: docker }
+    nodes:
+      - name: motor
+        build: { use: amd64 }
+      - name: planner
+        build: { use: docker }

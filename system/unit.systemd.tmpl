@@ -1,0 +1,13 @@
+[Unit]
+Description=Robot Node: {name}
+After={after}
+
+[Service]
+User={user}
+WorkingDirectory={workdir}
+ExecStart={exec}
+Restart={restart}
+Environment={env_lines}
+
+[Install]
+WantedBy=multi-user.target

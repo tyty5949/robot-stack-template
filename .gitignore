@@ -1,0 +1,15 @@
+# secrets
+*.passwd
+*.pem
+*.crt
+*.key
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# build outputs
+build/
+dist/
