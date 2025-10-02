@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-NEW_NAME="${1:-}"
-if [[ -z "$NEW_NAME" ]]; then
-  echo "usage: scripts/bootstrap.sh <new-stack-name>"
-  exit 1
-fi
-echo "Renaming references from robot-stack-template -> ${NEW_NAME}"
-grep -rl 'robot-stack-template' . | xargs sed -i "s/robot-stack-template/${NEW_NAME}/g"
-echo "Done. You may now: git init && git remote add origin <url> && git add . && git commit -m 'init' && git push -u origin main"
+
+NEW_NAME="${1:?usage: bootstrap.sh <new-stack-name>}"
+
+# Run replacement across tracked files, but skip this script
+rg -l 'robot-stack-template' \
+  | grep -v "scripts/bootstrap.sh" \
+  | xargs sed -i "s/robot-stack-template/${NEW_NAME}/g"
+
+echo "✅ Renamed references from 'robot-stack-template' to '${NEW_NAME}'."
