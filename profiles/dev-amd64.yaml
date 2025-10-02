@@ -1,0 +1,7 @@
+ipc:
+  broker: { type: docker }
+nodes:
+  - name: example-python
+    build: { use: amd64 }
+  - name: example-cpp
+    build: { use: docker }

@@ -8,6 +8,10 @@ WorkingDirectory={workdir}
 ExecStart={exec}
 Restart={restart}
 Environment={env_lines}
+# Hardening (enable as needed):
+# NoNewPrivileges=yes
+# ProtectSystem=full
+# ProtectHome=yes
 
 [Install]
 WantedBy=multi-user.target

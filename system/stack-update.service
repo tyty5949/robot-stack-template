@@ -1,0 +1,6 @@
+[Unit]
+Description=Auto update robot stack
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash -lc 'cd /opt/robot-stack && git pull --ff-only && python3 tools/stack.py apply-native --profile pi4'

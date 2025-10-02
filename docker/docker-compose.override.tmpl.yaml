@@ -1,0 +1,6 @@
+version: "3.8"
+services:
+  mqtt:
+    ports:
+      - "1883:1883"
+  # Add extras for local dev: simulators, web UIs, etc.

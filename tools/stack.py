@@ -14,7 +14,7 @@
 #   python3 tools/stack.py status
 #   python3 tools/stack.py doctor
 #
-import argparse, os, sys, subprocess, shlex, hashlib, textwrap, pathlib, json, shutil
+import argparse, os, sys, subprocess, shlex, hashlib, textwrap, pathlib, shutil
 from typing import Dict, Any, List
 try:
     import yaml
@@ -25,8 +25,6 @@ except ImportError:
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent
 STATE_DIR = pathlib.Path("/var/lib/robot-stack")  # stores last commit SHAs, etc.
-
-# ------------------------ tiny utils ------------------------
 
 def run(cmd: List[str], cwd: str | None = None, check: bool = True, capture: bool = False):
     print(f"+ {' '.join(cmd)}", flush=True)
@@ -69,7 +67,6 @@ def sudo() -> List[str]:
     return ["sudo"] if os.geteuid() != 0 else []
 
 # ------------------------ manifest & profiles ------------------------
-
 def deep_merge(base: Any, over: Any) -> Any:
     if isinstance(base, dict) and isinstance(over, dict):
         out = dict(base)
@@ -77,7 +74,6 @@ def deep_merge(base: Any, over: Any) -> Any:
             out[k] = deep_merge(base.get(k), v)
         return out
     if isinstance(base, list) and isinstance(over, list):
-        # naive override (profile list replaces base list)
         return list(over)
     return over if over is not None else base
 
@@ -89,11 +85,9 @@ def apply_profile(manifest: Dict[str, Any], profile_name: str | None) -> Dict[st
     if profile_name not in profiles:
         raise SystemExit(f"Profile '{profile_name}' not found in manifest.")
     prof = profiles[profile_name] or {}
-    # Merge top-level overrides
     for key in ["stack_root", "ipc", "defaults"]:
         if key in prof:
             m[key] = deep_merge(m.get(key, {}), prof[key])
-    # Merge node-specific overrides by node name
     base_nodes = m.get("nodes", []) or []
     prof_nodes = prof.get("nodes", []) or []
     over_by_name = {n["name"]: n for n in prof_nodes if "name" in n}
@@ -105,7 +99,6 @@ def apply_profile(manifest: Dict[str, Any], profile_name: str | None) -> Dict[st
     return m
 
 # ------------------------ git & build ------------------------
-
 def clone_or_checkout(node: Dict[str, Any], dest_root: str) -> str:
     node_dir = pathlib.Path(dest_root) / node["name"]
     repo = node["repo"]; ref = node.get("ref", "main")
@@ -113,9 +106,7 @@ def clone_or_checkout(node: Dict[str, Any], dest_root: str) -> str:
         run(["git", "clone", "--branch", ref, repo, str(node_dir)])
     else:
         run(["git", "fetch", "origin"], cwd=str(node_dir))
-        # checkout a branch, tag, or SHA
         run(["git", "checkout", ref], cwd=str(node_dir))
-        # if ref is branch name, fast-forward to origin/<ref>
         run(["git", "pull", "--ff-only", "origin", ref], cwd=str(node_dir), check=False)
     return str(node_dir)
 
@@ -135,7 +126,7 @@ def write_sha(node_name: str, sha: str):
 
 def run_build(node: Dict[str, Any], repo_dir: str, build_key: str):
     build = node.get("build", {})
-    use = node.get("build", {}).get("use")  # profile may set build: {use: pi}
+    use = node.get("build", {}).get("use")
     if use:
         cmds = build.get(use)
     else:
@@ -147,13 +138,11 @@ def run_build(node: Dict[str, Any], repo_dir: str, build_key: str):
         cmd_list = shlex.split(cmds)
         run(cmd_list, cwd=repo_dir)
     elif isinstance(cmds, list):
-        # allow inline ["bash","-lc","..."] or ["make","build-pi"]
         run([str(x) for x in cmds], cwd=repo_dir)
     else:
         raise SystemExit(f"Invalid build command for node {node['name']}")
 
 # ------------------------ systemd units ------------------------
-
 def render_systemd_unit(manifest: Dict[str, Any], node: Dict[str, Any]) -> str:
     tmpl_path = ROOT / "system" / "unit.systemd.tmpl"
     if not tmpl_path.exists():
@@ -194,7 +183,6 @@ def ensure_systemd_available():
         raise SystemExit("systemd not found. apply-native requires systemd.")
 
 # ------------------------ broker (mosquitto) ------------------------
-
 def install_or_update_broker(manifest: Dict[str, Any]) -> bool:
     ipc = manifest.get("ipc", {}) or {}
     adapter = ipc.get("adapter", "mqtt")
@@ -215,7 +203,6 @@ def install_or_update_broker(manifest: Dict[str, Any]) -> bool:
     if not conf_src.exists():
         raise SystemExit(f"Broker conf not found: {conf_src}")
 
-    # Install mosquitto if missing
     if not which("mosquitto"):
         run(sudo() + ["apt-get", "update"])
         run(sudo() + ["apt-get", "install", "-y", "mosquitto", "mosquitto-clients"])
@@ -223,10 +210,8 @@ def install_or_update_broker(manifest: Dict[str, Any]) -> bool:
     ensure_dir("/etc/mosquitto")
     changed = write_if_changed("/etc/mosquitto/mosquitto.conf", conf_src.read_text(encoding="utf-8"))
 
-    # enable service
     systemctl("enable", "mosquitto")
     if changed:
-        # prefer reload when supported; else restart
         try:
             systemctl("reload-or-restart", "mosquitto")
         except subprocess.CalledProcessError:
@@ -236,37 +221,30 @@ def install_or_update_broker(manifest: Dict[str, Any]) -> bool:
     return changed
 
 # ------------------------ apply-native ------------------------
-
 def apply_native(manifest: Dict[str, Any], profile_name: str, build_key: str):
     ensure_systemd_available()
 
-    # Apply profile view
     view = apply_profile(manifest, profile_name)
     stack_root = view["stack_root"]
     ensure_dir(stack_root)
     ensure_dir(STATE_DIR)
 
-    # Broker
     install_or_update_broker(view)
 
-    # Nodes
     any_unit_changed = False
     changed_units: List[str] = []
     restarted_nodes: List[str] = []
     for node in view.get("nodes", []):
         name = node["name"]
-        print(f"\n== {name} ==")
+        print(f\"\"\"\n== {name} ==\"\"\"\n)
 
         repo_dir = clone_or_checkout(node, stack_root)
         new_sha = get_head_commit(repo_dir)
         prev_sha = read_prev_sha(name)
         code_changed = (new_sha != prev_sha)
 
-        # Choose build target for this profile
-        # 1) explicit build.use (already merged by profile), else 2) build_key param
         run_build(node, os.path.join(repo_dir, node.get("workdir", ".")), build_key)
 
-        # Render unit
         unit_text = render_systemd_unit(view, node)
         unit_path = f"/etc/systemd/system/{name}.service"
         unit_changed = write_if_changed(unit_path, unit_text)
@@ -274,18 +252,12 @@ def apply_native(manifest: Dict[str, Any], profile_name: str, build_key: str):
             any_unit_changed = True
             changed_units.append(name)
 
-        # Enable service
         systemctl("enable", f"{name}.service")
 
-        # Restart policy:
-        # - If code changed -> restart
-        # - Else if unit changed -> daemon-reload then restart
-        # - Else no-op (you can opt-in to try-restart everything)
         if code_changed:
             restarted_nodes.append(name)
             write_sha(name, new_sha)
 
-        # Save SHA even if unchanged to ensure state is present
         if prev_sha is None:
             write_sha(name, new_sha)
 
@@ -293,69 +265,51 @@ def apply_native(manifest: Dict[str, Any], profile_name: str, build_key: str):
         systemctl("daemon-reload")
 
     for name in changed_units:
-        # unit changed implies restart
         systemctl("restart", f"{name}.service")
 
     for name in restarted_nodes:
         if name not in changed_units:
             systemctl("restart", f"{name}.service")
 
-    print("\nSummary:")
+    print("\\nSummary:")
     print(f" - Units changed: {', '.join(changed_units) if changed_units else 'none'}")
     print(f" - Code restarts: {', '.join(restarted_nodes) if restarted_nodes else 'none'}")
     print("Apply complete.")
 
 # ------------------------ compose generation ------------------------
-
 def gen_compose(manifest: Dict[str, Any], profile_name: str, out_path: str):
     view = apply_profile(manifest, profile_name)
     broker = view.get("ipc", {}).get("broker", {}) or {}
     broker_type = broker.get("type", "mosquitto")
 
     services = []
-    # Broker section
-    if broker_type == "docker":
-        services.append(textwrap.dedent("""
+    if broker_type in ("docker","mosquitto"):
+        services.append(textwrap.dedent(\"\"\"
           mqtt:
             image: eclipse-mosquitto:2
             restart: unless-stopped
             ports: ["1883:1883"]
-        """).rstrip())
-    elif broker_type == "mosquitto":
-        # still allow a dockerized broker for dev if desired
-        services.append(textwrap.dedent("""
-          mqtt:
-            image: eclipse-mosquitto:2
-            restart: unless-stopped
-            ports: ["1883:1883"]
-        """).rstrip())
+        \"\"\").rstrip())
 
-    # Node services
     for n in view.get("nodes", []):
-        svc = {
-            "name": n["name"],
-            "env": dict((view.get("defaults", {}).get("env") or {}))
-        }
-        svc["env"].update(n.get("env") or {})
-        # ensure MQTT points to service 'mqtt' inside compose net
-        svc["env"]["MQTT_URL"] = svc["env"].get("MQTT_URL", "tcp://mqtt:1883")
+        env = dict((view.get("defaults", {}).get("env") or {}))
+        env.update(n.get("env") or {})
+        env["MQTT_URL"] = env.get("MQTT_URL", "tcp://mqtt:1883")
+        env_lines = "".join([f"              {k}: {v}\\n" for k,v in env.items()])
 
-        # We assume each node repo has a Dockerfile at its root after `build-docker`.
-        # Compose will build from a directory placed next to robot-stack (dev layout).
-        services.append(textwrap.dedent(f"""
+        services.append(textwrap.dedent(f\"\"\"
           {n["name"]}:
             build: ../{n["name"]}
             environment:
-{''.join([f'              {k}: {v}\n' for k,v in svc["env"].items()])}            depends_on: ["mqtt"]
+{env_lines}            depends_on: ["mqtt"]
             restart: unless-stopped
-        """).rstrip())
+        \"\"\").rstrip())
 
-    compose_text = "version: '3.8'\nservices:\n" + "\n".join(services).replace("\n", "\n  ")
+    compose_text = "version: '3.8'\\nservices:\\n" + "\\n".join(services).replace("\\n", "\\n  ")
     changed = write_if_changed(out_path, compose_text)
     print(f"Wrote {out_path} ({'changed' if changed else 'unchanged'})")
 
-# ------------------------ quality-of-life ------------------------
-
+# ------------------------ QoL ------------------------
 def status():
     if which("systemctl"):
         run(sudo() + ["systemctl", "list-units", "--type=service", "--state=running", "--no-pager"])
@@ -377,15 +331,13 @@ def doctor():
     else:
         print(" - OK")
 
-# ------------------------ main ------------------------
-
 def main():
     ap = argparse.ArgumentParser(description="Robot Stack Controller")
     ap.add_argument("cmd", choices=["apply-native", "gen-compose", "status", "doctor"])
     ap.add_argument("--manifest", default=str(ROOT / "manifest.yaml"))
-    ap.add_argument("--profile", default=None, help="Profile name from manifest.profiles")
+    ap.add_argument("--profile", default=None, help="Profile name from profiles/*.yaml")
     ap.add_argument("--out", default=str(ROOT / "docker-compose.yml"), help="Output path for gen-compose")
-    ap.add_argument("--build-key", default="pi", help="Default build key to use when profile doesn't specify build.use (pi/amd64/jetson/docker)")
+    ap.add_argument("--build-key", default="pi", help="Default build key (pi/amd64/jetson/docker)")
     args = ap.parse_args()
 
     manifest = read_yaml(args.manifest)

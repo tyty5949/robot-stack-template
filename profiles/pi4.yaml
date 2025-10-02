@@ -1,0 +1,8 @@
+defaults:
+  env:
+    MQTT_URL: tcp://127.0.0.1:1883
+nodes:
+  - name: example-python
+    build: { use: pi }
+  - name: example-cpp
+    build: { use: pi }
