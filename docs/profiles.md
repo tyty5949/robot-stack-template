@@ -34,6 +34,7 @@ nodes:
 
 ## Common Profiles
 
-- **pi4.yaml** → runs natively with systemd + mosquitto service.
-- **dev-amd64.yaml** → runs in Docker with broker as container.
-- **jetson.yaml** → same as pi but may use build: `{ use: jetson }`.
+- **pi4.yaml** → runs natively with systemd + mosquitto service  
+- **pi5.yaml** → same as pi4 but tuned for arm64 and GPU-enabled nodes  
+- **jetson.yaml** → optimized for NVIDIA Jetson devices (CUDA/cuDNN support)  
+- **dev-amd64.yaml** → runs in Docker with broker as container

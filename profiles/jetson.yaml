@@ -1,0 +1,34 @@
+defaults:
+  user: robot
+  env:
+    MQTT_URL: tcp://127.0.0.1:1883
+    ARCH: arm64
+    USE_GPU: "true"
+    CUDA_VISIBLE_DEVICES: "0"
+  unit:
+    after: [network-online.target]
+    restart: on-failure
+
+nodes:
+  - name: motor
+    build: { use: jetson }
+    exec: build/motor
+
+  - name: planner
+    build: { use: jetson }
+    exec: venv/bin/python apps/planner.py
+
+  - name: lidar
+    build: { use: jetson }
+    exec: build/lidar
+
+  - name: localization
+    build: { use: jetson }
+    exec: build/localization
+
+  - name: vision
+    build: { use: jetson }
+    exec: build/vision
+    env:
+      OPENCV_ACCELERATION: "cuda"
+      TORCH_DEVICE: "cuda"

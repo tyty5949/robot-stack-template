@@ -16,23 +16,27 @@ defaults:
 
 nodes:
   - name: motor
-    repo: https://github.com/YOURNAME/motor-node.git
+    repo: https://github.com/YOURNAME/motor-python.git
     ref: main
     workdir: .
-    exec: build/motor
+    exec: venv/bin/python app.py
     build:
       pi:     ["make","build-pi"]
+      pi5:    ["make","build-pi5"]
       amd64:  ["make","build-amd64"]
+      jetson: ["make","build-jetson"]
       docker: ["make","build-docker"]
 
   - name: planner
-    repo: https://github.com/YOURNAME/planner-node.git
+    repo: https://github.com/YOURNAME/planner-cpp.git
     ref: main
     workdir: .
-    exec: venv/bin/python apps/planner.py
+    exec: build/example_cpp
     build:
       pi:     ["make","build-pi"]
+      pi5:    ["make","build-pi5"]
       amd64:  ["make","build-amd64"]
+      jetson: ["make","build-jetson"]
       docker: ["make","build-docker"]
 
 profiles:

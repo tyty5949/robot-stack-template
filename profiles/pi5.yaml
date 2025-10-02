@@ -1,0 +1,24 @@
+# profiles/pi5.yaml
+defaults:
+  user: robot
+  env:
+    MQTT_URL: tcp://127.0.0.1:1883
+    ARCH: arm64
+    USE_GPU: "true"         # Set to false if no GPU acceleration needed
+  unit:
+    after: [network-online.target]
+    restart: on-failure
+
+nodes:
+  - name: motor
+    build: { use: pi }
+    exec: build/motor
+  - name: planner
+    build: { use: pi }
+    exec: venv/bin/python apps/planner.py
+  - name: lidar
+    build: { use: pi }
+    exec: build/lidar
+  - name: localization
+    build: { use: pi }
+    exec: build/localization
