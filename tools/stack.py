@@ -236,7 +236,7 @@ def apply_native(manifest: Dict[str, Any], profile_name: str, build_key: str):
     restarted_nodes: List[str] = []
     for node in view.get("nodes", []):
         name = node["name"]
-        print(f\"\"\"\n== {name} ==\"\"\"\n)
+        print(f"\n== {name} ==")
 
         repo_dir = clone_or_checkout(node, stack_root)
         new_sha = get_head_commit(repo_dir)
@@ -278,36 +278,48 @@ def apply_native(manifest: Dict[str, Any], profile_name: str, build_key: str):
 
 # ------------------------ compose generation ------------------------
 def gen_compose(manifest: Dict[str, Any], profile_name: str, out_path: str):
+    """
+    Generate docker-compose.yml using safe YAML emission.
+    Each node builds from a sibling repo (../<node>) and uses Dockerfile.docker.
+    """
     view = apply_profile(manifest, profile_name)
-    broker = view.get("ipc", {}).get("broker", {}) or {}
+
+    compose: Dict[str, Any] = {"services": {}}
+
+    # Broker
+    broker = (view.get("ipc") or {}).get("broker") or {}
     broker_type = broker.get("type", "mosquitto")
+    if broker_type in ("docker", "mosquitto"):
+        compose["services"]["mqtt"] = {
+            "image": "eclipse-mosquitto:2",
+            "restart": "unless-stopped",
+            "ports": ["1883:1883"],
+        }
 
-    services = []
-    if broker_type in ("docker","mosquitto"):
-        services.append(textwrap.dedent(\"\"\"
-          mqtt:
-            image: eclipse-mosquitto:2
-            restart: unless-stopped
-            ports: ["1883:1883"]
-        \"\"\").rstrip())
+    # Defaults
+    defaults_env = (view.get("defaults") or {}).get("env") or {}
 
+    # Nodes
     for n in view.get("nodes", []):
-        env = dict((view.get("defaults", {}).get("env") or {}))
+        env = dict(defaults_env)
         env.update(n.get("env") or {})
-        env["MQTT_URL"] = env.get("MQTT_URL", "tcp://mqtt:1883")
-        env_lines = "".join([f"              {k}: {v}\\n" for k,v in env.items()])
+        # Always talk to the mqtt service in Compose
+        env["MQTT_URL"] = "tcp://mqtt:1883"
 
-        services.append(textwrap.dedent(f\"\"\"
-          {n["name"]}:
-            build: ../{n["name"]}
-            environment:
-{env_lines}            depends_on: ["mqtt"]
-            restart: unless-stopped
-        \"\"\").rstrip())
+        compose["services"][n["name"]] = {
+            "build": {
+                "context": f"../{n['name']}",
+                "dockerfile": "Dockerfile.docker",  # <= key change
+            },
+            "environment": env,
+            "depends_on": ["mqtt"],
+            "restart": "unless-stopped",
+        }
 
-    compose_text = "version: '3.8'\\nservices:\\n" + "\\n".join(services).replace("\\n", "\\n  ")
-    changed = write_if_changed(out_path, compose_text)
-    print(f"Wrote {out_path} ({'changed' if changed else 'unchanged'})")
+    ensure_dir(pathlib.Path(out_path).parent)
+    with open(out_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(compose, f, sort_keys=False)
+    print(f"Wrote {out_path}")
 
 # ------------------------ QoL ------------------------
 def status():
